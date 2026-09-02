@@ -24,13 +24,19 @@ tmux new -s firstmate
 
 Crew tasks become windows in that session.
 `tmux display-message -p '#S'` prints its name.
-If the primary harness runs outside tmux, Firstmate creates or reuses a detached session named `firstmate`:
+If the primary harness runs outside tmux, Firstmate uses a session named `firstmate`.
+It reuses that session when it already exists.
+It creates a new one in ghostty-first order: it launches a ghostty terminal, creates the tmux session inside that ghostty shell, then runs `treehouse get`, then the agent.
+This gives the first window in a new session a ghostty terminal around it.
+When ghostty is not available, it falls back to a detached session:
 
 ```sh
 tmux attach -t firstmate
 ```
 
 Each task window is named `fm-<id>`.
+A Claude hook can rename a task window to `fm-<id>: <rich title>`.
+Firstmate finds its windows by the `fm-<id>` prefix, so a renamed window still resolves.
 
 ```sh
 tmux list-windows -t <session-name>
@@ -47,7 +53,8 @@ Verify setup by spawning a small task and confirming its `fm-<id>` window appear
 ### Agent liveness probe
 
 A target-existence check proves only that the pane exists.
-The deeper tmux agent-liveness probe first verifies exact window membership, then reads process names to distinguish a running harness from a bare idle shell.
+The deeper tmux agent-liveness probe first verifies window membership by the recorded `fm-<id>` prefix, then reads process names to distinguish a running harness from a bare idle shell.
+The prefix match lets a hook-renamed `fm-<id>: <rich title>` window still confirm membership, so a healthy renamed worker never reads as missing.
 It classifies recognized Claude, Codex, OpenCode, Pi, pi-signed, Grok, Kimi, Cursor, and Muse process identities as `alive`, common shells as `dead`, an authoritatively absent window as `missing`, unreadable state as `unreadable`, and every other process as `ambiguous`.
 Only `dead` and `missing` authorize recovery because a false dead result could launch a duplicate agent.
 
