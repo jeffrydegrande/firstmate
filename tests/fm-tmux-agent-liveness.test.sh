@@ -255,6 +255,32 @@ fm_backend_tmux_foreground_comms "$SESSION:no-such-window" >/dev/null \
   || fail "an absent window in a readable session must classify missing, not whatever the fallback pane runs"
 pass "tmux liveness: an absent window classifies missing rather than inheriting tmux's active-window fallback"
 
+# --- a hook-renamed window still resolves by its recorded bare handle --------
+# A Claude hook renames each task window to "fm-<task>: <rich title>", while the
+# recorded liveness handle stays the bare fm-<task> name (fm-spawn.sh persists
+# window=$T). Window membership must match by prefix, or a healthy renamed
+# worker reads as missing and can be relaunched as a duplicate onto its live
+# worktree.
+
+new_window fm-proj "$LAB/bin/claude-link" 900
+wait_for_state "$SESSION:fm-proj" alive \
+  || fail "the bare fm-<task> window must classify alive before any rename"
+"$REAL_TMUX" -L "$SOCKET" rename-window -t "$SESSION:fm-proj" "fm-proj: shipping the thing" \
+  || fail "could not rename the task window to its rich title"
+wait_for_state "$SESSION:fm-proj" alive \
+  || fail "a window renamed to 'fm-<task>: <title>' must still classify alive by its recorded bare handle"
+pass "tmux liveness: a hook-renamed 'fm-<task>: <title>' window resolves by its recorded bare fm-<task> handle"
+
+# The prefix must not widen into a bare substring: a recorded fm-<task> handle
+# must not adopt an unrelated fm-<task>-suffixed sibling window. Only fm-alone-2
+# exists here, so a recorded fm-alone handle must classify missing.
+new_window fm-alone-2 "$LAB/bin/claude-link" 900
+wait_for_state "$SESSION:fm-alone-2" alive \
+  || fail "the suffixed sibling window must be live for this to prove anything"
+[ "$(fm_backend_agent_state tmux "$SESSION:fm-alone")" = missing ] \
+  || fail "a recorded fm-alone handle must not match an unrelated fm-alone-2 window"
+pass "tmux liveness: the bare-handle prefix match does not over-match an fm-<task>-suffixed sibling"
+
 # --- Cursor's composer: the terminal cursor is NOT a composer locator --------
 # Cursor Agent CLI parks its terminal cursor below its footer with cursor_flag 0,
 # so tmux's #{cursor_y} answers `unknown` for every Cursor pane state and the
