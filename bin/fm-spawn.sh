@@ -2429,7 +2429,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
 else
 case "$BACKEND" in
   tmux)
-    SES=$(fm_backend_tmux_container_ensure)
+    SES=$(fm_backend_tmux_container_ensure "$PROJ_ABS")
     T="$SES:$W"
     # #134 robustness (tmux): fm_backend_tmux_create_task captures a stable window
     # id and pins the window name (automatic-rename/allow-rename off) so a captain's

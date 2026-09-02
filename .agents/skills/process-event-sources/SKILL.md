@@ -31,15 +31,15 @@ For a Lavish review artifact firstmate owns (a live investigating scout should h
 bin/fm-procevent-lavish.sh arm <artifact.html>
 ```
 
-When a source carries captain answers to captain-held tasks, bind it BEFORE arming it, so it can never produce an answer that has nowhere to go:
+When a source carries user answers to user-held tasks, bind it BEFORE arming it, so it can never produce an answer that has nowhere to go:
 
 ```sh
 bin/fm-captain-hold.sh bind <source-id>
 ```
 
-The runner then passes each captured result to that source's own adapter `answers` command and pipes the keyed answers it prints into the one keyed-answer intake, which owns every rule about what they mean; the keys are captain-held task ids.
+The runner then passes each captured result to that source's own adapter `answers` command and pipes the keyed answers it prints into the one keyed-answer intake, which owns every rule about what they mean; the keys are user-held task ids.
 This is generic across built-in adapters with an `answers` command, and the runner still wakes you to act on the result.
-External process-event bindings intentionally expose no answer operation and cannot feed the captain-answer intake.
+External process-event bindings intentionally expose no answer operation and cannot feed the user-answer intake.
 `captain-hold-lifecycle` owns when a binding is required and what the keys must be.
 
 A configured remote secondmate reply source is armed and handled through `bin/fm-procevent-remote-reply.sh`.
@@ -62,7 +62,7 @@ bin/fm-procevent-when.sh arm <name> --condition <argv>... --action <argv>...
 
 [`docs/configuration.md`](../../../docs/configuration.md#process-to-event-sources-stateprocevent) owns the watch's operating contract, while the adapter's header and `--help` own the flags, cadence, trust binding, and outcome document.
 Eligibility is a firstmate judgment made BEFORE arming, because the scripts cannot classify an argv: the action must be safe, reversible, and exact (for example `no-mistakes update --beta`, whose own guard refuses while a validation run is active).
-Never bind an action that is destructive, irreversible, or security-sensitive, an action needing captain approval or any gate decision, or an action whose right form depends on what the condition finds - those keep the existing check-fires-then-firstmate-decides flow, for which a plain custom check or another adapter stays correct.
+Never bind an action that is destructive, irreversible, or security-sensitive, an action needing user approval or any gate decision, or an action whose right form depends on what the condition finds - those keep the existing check-fires-then-firstmate-decides flow, for which a plain custom check or another adapter stays correct.
 When in doubt, arm only the condition half as an ordinary check and keep the action as a wake-time decision.
 
 `bin/fm-procevent.sh --help`, `bin/fm-procevent-lavish.sh --help`, `bin/fm-procevent-when.sh --help`, `bin/fm-procevent-quota.sh --help`, and `bin/fm-procevent-remote-reply.sh --help` own the exact commands and flags.
@@ -99,7 +99,7 @@ Two rules the commands cannot enforce for you:
   Consume a Lavish capture with `bin/fm-procevent-lavish.sh read <result-file>` rather than grepping the raw file: that command reports declared and presented item counts plus a completeness verdict, enumerates every captured queued item while retaining supplied element identity, and surfaces a `tag=message` session-ending message as its own field.
   `answers` remains the keyed-choice extractor and never treats freeform prose as a decision key.
   A `feedback` result can still be the last one a review ever produces, so never assume another wake is coming just because the state is not `ended`.
-: A routine no-op an adapter positively identifies never becomes a wake at all - it is recorded as handled and stays silent, so you never see it. For Lavish that is exactly an ended session carrying nothing: a board the captain closed without saying anything. A board close carrying a real answer, and every other result, still wakes you unchanged. Never read the absence of a wake as proof a review is still open; ask the source, not the queue.
+: A routine no-op an adapter positively identifies never becomes a wake at all - it is recorded as handled and stays silent, so you never see it. For Lavish that is exactly an ended session carrying nothing: a board the user closed without saying anything. A board close carrying a real answer, and every other result, still wakes you unchanged. Never read the absence of a wake as proof a review is still open; ask the source, not the queue.
 : A Lavish wake whose source id matches `bin/fm-procevent-lavish.sh source-id "$(bin/fm-bearings-board.sh path)"` is a bearings board result; load the `bearings` skill's board-wake handling regardless of which answer kinds the result contains.
 : A `when` wake carries the watch's one terminal captured outcome and may be re-announced until handled: `bin/fm-procevent-when.sh classify <result-file>` returns `fired` (relay the success and its output); `action-failed` (relay the captured error and decide recovery); `condition-error`, `never-true`, or `rejected` (the watch stopped safely without acting - report why and decide whether to re-arm); or `ambiguous` (the action was claimed but its outcome was never captured - verify its effect manually before anything else). Every `when` outcome is terminal and the action is never retried automatically, so after handling and the generic acknowledgement above, run `bin/fm-procevent-when.sh retire <name>` to clean the watch's private records before any re-arm.
 : A `quota` wake carries one terminal quota-check outcome: `bin/fm-procevent-quota.sh classify <result-file>` returns `low`, `exhausted`, `error`, or `unknown`. Report the provider and captured quota state, decide whether the active work should continue or move, then use the generic acknowledgement above. Re-arm explicitly if continued monitoring is needed.
@@ -131,7 +131,7 @@ A result lost after that clearing and before the runner reads the process output
 The remote-reply adapter removes that particular pre-capture window by never consuming its source, but it cannot recover bytes truly lost from the remote log itself.
 Say these boundaries plainly wherever the behavior is described.
 
-## Talking to the captain about it
+## Talking to the user about it
 
 A wake is not news by itself.
 Report what the source actually produced and what it changes, never the event line, the result path, or the runner.

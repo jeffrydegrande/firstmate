@@ -1,6 +1,6 @@
 ---
 name: stow
-description: Sweep the current session for uncaptured durable knowledge, file it to disk, persist the open work records this session knows are unfiled or now wrong, and curate the home's tiered, decaying startup memory before a context reset. Use when the captain invokes /stow (e.g. "/stow", "stow what you've learned"), before a session reset or context compaction, or periodically to keep operational memory current.
+description: Sweep the current session for uncaptured durable knowledge, file it to disk, persist the open work records this session knows are unfiled or now wrong, and curate the home's tiered, decaying startup memory before a context reset. Use when the user invokes /stow (e.g. "/stow", "stow what you've learned"), before a session reset or context compaction, or periodically to keep operational memory current.
 user-invocable: true
 metadata:
   internal: true
@@ -34,7 +34,7 @@ Markers are compact trailing HTML comments, deliberately cheap because marker by
 
 The tier names say what the pass does with an entry:
 
-- `pinned` - no clock is ever read for it: exempt from decay and from budget eviction, changed only through inspect-then-update when the captain or reality changes it, except that an explicit per-item captain approval may offload it under the flow below.
+- `pinned` - no clock is ever read for it: exempt from decay and from budget eviction, changed only through inspect-then-update when the user or reality changes it, except that an explicit per-item user approval may offload it under the flow below.
 - `aging` - it must re-prove itself: an entry whose age is greater than or equal to 30 days since its last-reinforced date is stale, and a stale entry is re-validated (date refreshed) or archived, never kept by inertia alone.
 - `perishable` - it is stored expecting disposal: an entry whose age is greater than or equal to 7 days since its last-reinforced date is stale, and its prose must name a checkable expiry condition, such as a backlog id, a version floor, or a dated expectation.
   An admitted durable entry that cannot name a checkable expiry condition is not `perishable` and must be stored as `aging`.
@@ -90,7 +90,7 @@ Every `/stow` invocation performs this complete pass, even when the session cont
    Every mutation in the rest of this pass, including reinforcement, retiering, decay archival, legacy migration, consolidation, budget archival, and offload, applies only to an editable memory file.
    When a read-only shared entry appears to require one of those changes, leave it untouched, report the required change as an ownership exception, and route it to the primary owner.
 3. Build one whole-file retention plan before editing, ordered by likelihood of informing a future session.
-   Keep in always-loaded memory only current captain preferences, authority and safety boundaries, recurring working style, fleet-wide or frequently relevant operating facts, and concise pointers that are expensive to rediscover.
+   Keep in always-loaded memory only current user preferences, authority and safety boundaries, recurring working style, fleet-wide or frequently relevant operating facts, and concise pointers that are expensive to rediscover.
    Prefer offloading current but conditional, narrow, project-specific, or context-specific material to a live on-demand owner, and archive stale, superseded, or low-recurrence material to the cold tier.
    Retain lower-utility material only while budget remains.
 4. Reinforce and stamp.
@@ -114,15 +114,15 @@ Every `/stow` invocation performs this complete pass, even when the session cont
    Budget eviction considers only editable `aging` entries that carry a last-reinforced date and are not pending offload; a `<!--g-->` legacy-grace entry is ineligible until its grace cycle resolves, so eviction can neither cancel a promised grace cycle nor prefer just-validated entries over unvalidated ones.
    Convergence precondition: before evicting anything, total the eligible pool and check that archiving all of it would reach the budget; when even that cannot, skip the eviction rung entirely, archive nothing for budget reasons, and carry the concrete inability to the final step, naming the exempt pinned floor that crowds out the budget.
    Automatic processes never move a `pinned` entry: decay clocks, legacy grace cycles, oldest-first budget eviction, immediate budget archiving, and autonomous offload do not apply to it.
-   The sole exception is relocation to a JIT owner after explicit, per-item captain approval under the offload flow below, and that entry remains in memory until its destination is live.
+   The sole exception is relocation to a JIT owner after explicit, per-item user approval under the offload flow below, and that entry remains in memory until its destination is live.
 8. Run `bin/fm-startup-memory-budget.sh report` again after the complete pass.
-   Finish at or below the effective budget, or open a concrete captain decision before ending the pass.
+   Finish at or below the effective budget, or open a concrete user decision before ending the pass.
    A secondmate must explicitly report `primary-owned-shared-file-alone-exceeds-budget` when the inherited shared file alone exceeds its allowance, because local curation cannot resolve it.
-   Route that constraint to the primary owner and open one concrete captain decision at the primary owning level that names the shortfall, with exactly these options: raise the affected home's effective budget, or explicitly approve the primary owner trimming or offloading each named shared-file entry.
+   Route that constraint to the primary owner and open one concrete user decision at the primary owning level that names the shortfall, with exactly these options: raise the affected home's effective budget, or explicitly approve the primary owner trimming or offloading each named shared-file entry.
    When the convergence precondition skipped eviction, report the exempt pinned floor and the remaining shortfall as that concrete inability rather than archiving eligible knowledge that could not close the gap.
-   Only after every safe non-pinned archival, consolidation, offload, and eligible eviction action is exhausted may a remaining excess be attributed to pinned safety, authority, or genuine captain-preference entries.
-   In that last-resort case, create one captain-held decision that names the shortfall and each relevant pinned entry, with exactly these options: raise the effective budget, or explicitly approve offloading or trimming a named pinned entry.
-   Route a read-only ownership constraint to its primary owner, and make every other unresolved excess a concrete captain decision that names the safe action still required.
+   Only after every safe non-pinned archival, consolidation, offload, and eligible eviction action is exhausted may a remaining excess be attributed to pinned safety, authority, or genuine user-preference entries.
+   In that last-resort case, create one user-held decision that names the shortfall and each relevant pinned entry, with exactly these options: raise the effective budget, or explicitly approve offloading or trimming a named pinned entry.
+   Route a read-only ownership constraint to its primary owner, and make every other unresolved excess a concrete user decision that names the safe action still required.
    Never end a pass over budget as an accepted exception.
 
 A net increase is allowed only for a genuinely new current fact with no stronger owner.
@@ -143,7 +143,7 @@ Archive provenance stays verbose rather than compact because the cold tier is ne
 
 Reasons include `unreinforced <N>d`, `unreinforced <N>p`, `budget oldest-first`, and `legacy-unvalidated`.
 Archiving is a move, not a removal, and recovery is `grep` plus copy back with no tooling.
-Each home keeps its own archive, the archive never cascades, and truncating a grown archive is a captain decision, not a mechanism.
+Each home keeps its own archive, the archive never cascades, and truncating a grown archive is a user decision, not a mechanism.
 
 ## Over-budget offload to JIT-loaded owners
 
@@ -160,7 +160,7 @@ Every test must hold for a candidate:
 
 - Editable source: this home owns the memory file and may relocate the entry; a read-only shared entry is routed to its primary owner instead.
 - Durable: not `perishable`, not stale, and expected to remain true for months.
-- Eligible by authority: only a non-pinned, dated `aging` entry that is not pending offload may be autonomously relocated to an already-existing allowed owner, while a `pinned` entry may be proposed only for explicit, per-item captain-approved relocation and can never be archived or autonomously offloaded for budget relief.
+- Eligible by authority: only a non-pinned, dated `aging` entry that is not pending offload may be autonomously relocated to an already-existing allowed owner, while a `pinned` entry may be proposed only for explicit, per-item user-approved relocation and can never be archived or autonomously offloaded for budget relief.
 - Conditional: a one-line nameable trigger exists, and a session that never touches that trigger runs no risk from omitting the fact.
 - Fat enough to matter: roughly 50 estimated tokens or more, handled largest-first, because consolidation handles smaller entries.
 - A destination below fits the entry's privacy and visibility.
@@ -169,7 +169,7 @@ Every test must hold for a candidate:
 ### Destinations
 
 **Hard rule: the stow process never creates or writes a firstmate-repo-tracked skill.**
-**Every skill stow's offload produces for a Firstmate home is user-owned and local, excluded through that active home's repository-local exclude file resolved with `git -C "$home_root" rev-parse --git-path info/exclude`; contributing a lesson to the shared tracked template is a separate deliberate captain action, never automatic.**
+**Every skill stow's offload produces for a Firstmate home is user-owned and local, excluded through that active home's repository-local exclude file resolved with `git -C "$home_root" rev-parse --git-path info/exclude`; contributing a lesson to the shared tracked template is a separate deliberate user action, never automatic.**
 Approved project-level destinations are not produced by stow: they ship normally through that project's own registered delivery path.
 
 - A user-owned local skill: a directory under `.agents/skills/<freeform-name>/` whose path is appended to the active home clone's repository-local exclude file, never to a `.gitignore`.
@@ -195,7 +195,7 @@ A local skill exists only in this home, so offloading an entry out of `data/capt
 2. Propose pinned relocation only.
    For a pinned candidate, append a `proposed-offload` section with the same fields to the completion receipt, create or refresh one durable backlog item with `tasks-axi add`, `tasks-axi show <id> --full`, and `tasks-axi update <id> --body-file <path>` as appropriate, then hold it through `bin/fm-captain-hold.sh hold`.
    Preserve each candidate's approval state in that item, and require explicit plain-chat approval for that named item before any migration.
-   If the captain never answers, nothing migrates and the held item persists, but it is never treated as budget relief.
+   If the user never answers, nothing migrates and the held item persists, but it is never treated as budget relief.
 3. Migrate an approved pinned candidate outside this pass.
    Resolve `home_root` to `$FM_HOME` when it is set and otherwise to the Firstmate code root, then re-validate the approved local-skill destination under that root for both index absence with `git -C "$home_root"` and filesystem collision absence.
    Before creating the destination or writing any private content, resolve the exclude file with `git -C "$home_root" rev-parse --git-path info/exclude`, append the destination directory path to it, and verify the future `SKILL.md` path is ignored with `git -C "$home_root" check-ignore`.
@@ -211,25 +211,25 @@ A local skill exists only in this home, so offloading an entry out of `data/capt
 ## Knowledge sweep and routing
 
 1. **Sweep the session for uncaptured durable knowledge.**
-   Look for operational learnings, captain preferences expressed in passing, project-intrinsic facts, standing decisions, and undone next steps.
+   Look for operational learnings, user preferences expressed in passing, project-intrinsic facts, standing decisions, and undone next steps.
 2. **Route each finding using AGENTS.md's knowledge-routing table.**
    AGENTS.md section 6 is the source of truth for destinations.
    Do not re-derive or duplicate that mapping here.
 3. **Write within the existing boundaries.**
-   - Captain preferences and fleet-local operational facts belong in the destination selected by AGENTS.md after the required whole-file curation pass.
+   - User preferences and fleet-local operational facts belong in the destination selected by AGENTS.md after the required whole-file curation pass.
      Create `data/learnings.md` only for a genuinely new local learning with no stronger owner.
-   - In a primary home, curate shared captain preferences only under the existing primary-authoritative shared-preference contract.
+   - In a primary home, curate shared user preferences only under the existing primary-authoritative shared-preference contract.
      In a secondmate home, route a newly discovered shared preference to the main firstmate through marked status or a document pointer instead of editing the inherited file.
    - Project-intrinsic knowledge never goes directly into a project's `AGENTS.md`.
      Route it through a normal ship task so a crewmate records it with `bin/fm-ensure-agents-md.sh` and the project's delivery path.
-   - Knowledge general to every Firstmate user belongs in this repo's shared tracked material through the normal branch, no-mistakes, PR, and captain-merge path.
+   - Knowledge general to every Firstmate user belongs in this repo's shared tracked material through the normal branch, no-mistakes, PR, and user-merge path.
    - For task-scoped notes, inspect the item with `tasks-axi show <id> --full`, classify the change as new, duplicate, superseding, or obsolete, then use a considered replacement body through `tasks-axi update <id> --body-file <path>`.
      Use `--archive-body` when recoverability matters.
      Never append.
    - File each undone next step as a queued backlog item with a genuine `blocked-by` dependency when applicable.
 4. **Use inspect-then-update.**
    For every retained fact, ask which current statement it supersedes, whether it can be a one-sentence rewrite, and whether a stale entry should be refreshed, archived, or routed to an existing stronger owner.
-   The only graduation moves are promotion to tracked shared material through a PR, folding a learning into the captain-preference destination selected by AGENTS.md, archiving a stale entry to `data/memory-archive.md`, autonomous offload of an eligible non-pinned conditional entry to an already-existing allowed owner through the reduce flow above, captain-approved offload of a pinned durable conditional entry to a JIT-loaded owner executed through the migration step above, or deletion of an entry that is a duplicate or already preserved through a stronger existing owner.
+   The only graduation moves are promotion to tracked shared material through a PR, folding a learning into the user-preference destination selected by AGENTS.md, archiving a stale entry to `data/memory-archive.md`, autonomous offload of an eligible non-pinned conditional entry to an already-existing allowed owner through the reduce flow above, user-approved offload of a pinned durable conditional entry to a JIT-loaded owner executed through the migration step above, or deletion of an entry that is a duplicate or already preserved through a stronger existing owner.
    A stale unique fact is never deleted, only archived.
    Do not invent another graduation path.
 
@@ -257,13 +257,13 @@ The first pass after adoption performs a one-time revalidation sweep of editable
 
 ## Completion receipt
 
-Report the outcome in plain captain-facing language with all of these facts:
+Report the outcome in plain user-facing language with all of these facts:
 
 - effective startup-memory budget and total estimated tokens before and after;
 - one or more actions for each of `data/captain.md`, `data/captain-shared.md`, and `data/learnings.md`, using only `unchanged`, `added`, `rewritten`, `pruned`, `routed`, `archived`, or `proposed-offload`; adding or replacing a migration marker is `rewritten`, never a new action verb such as `migrated`;
 - each durable finding filed outside memory and its authoritative owner;
 - each archived entry's reason, each autonomous offload's live destination and actual relief, and, when a pinned candidate was proposed, the `proposed-offload` section with every candidate's fields;
-- every unresolved exception, including a primary-owned shared-file constraint in a secondmate home, and every concrete captain decision opened for an over-budget result;
+- every unresolved exception, including a primary-owned shared-file constraint in a secondmate home, and every concrete user decision opened for an over-budget result;
 - each open record this pass filed or corrected, and each one it deliberately left alone with the judgment it is waiting on;
 - whether the session is safe to reset, only when all durable findings are captured, every open record this session held is filed or explicitly left with its reason, and the post-pass result is within budget with no exception or pending budget decision.
 
@@ -293,17 +293,17 @@ Act on each home by its reported `transport`:
   Relaunching that secondmate is a separate decision owned by `secondmate-provisioning`, never something `/stow` does on its own.
 - `unavailable` - that home's own accounting did not complete. Report the concrete exception and continue; a slow or unreachable home never blocks this home's `/stow`.
 
-A newly discovered shared captain preference still routes to the primary's `data/captain-shared.md` under the existing primary-authoritative contract, whichever home found it.
+A newly discovered shared user preference still routes to the primary's `data/captain-shared.md` under the existing primary-authoritative contract, whichever home found it.
 Offload proposals and the cold archive are per-home: file proposals only in the home whose pass produced them, and never cascade either to another home.
 
 Extend the completion receipt with one entry per secondmate alongside the primary's own, carrying that home's budget before and after, its per-file actions, its exceptions, and whether that home swept itself or was curated from here.
-Keep those entries in the same plain captain-facing language the rest of the receipt uses.
+Keep those entries in the same plain user-facing language the rest of the receipt uses.
 The session is reset-safe only when every home is within its own budget with no unresolved exception.
 
 ## Scope exclusion: no skill storage by the pass
 
 The stow pass itself must never store, create, or edit a skill as a destination for any finding.
-The exclusion binds the pass as a writer: proposing an offload and letting the migration step execute a captain-approved candidate later is not the pass storing a skill.
+The exclusion binds the pass as a writer: proposing an offload and letting the migration step execute a user-approved candidate later is not the pass storing a skill.
 Every Firstmate-home skill that migration produces is user-owned and local under the destinations hard rule, while an approved project-level destination is produced and shipped through that project's registered delivery path, never by stow.
 Changing firstmate's tracked `.agents/skills/` or public `skills/` remains a deliberately scoped Firstmate repository task through its pipeline, never a stow product.
-Outside a captain-approved offload, generalizable knowledge still routes to shared tracked material through its pipeline and fleet-local knowledge to `data/`.
+Outside a user-approved offload, generalizable knowledge still routes to shared tracked material through its pipeline and fleet-local knowledge to `data/`.
