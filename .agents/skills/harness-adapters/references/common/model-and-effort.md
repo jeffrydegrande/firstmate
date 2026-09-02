@@ -8,14 +8,14 @@ Add `references/common/dispatch.md` for configured profile precedence.
 `../../../bin/fm-spawn.sh` accepts concrete `--harness`, `--model`, and `--effort` values selected at intake; scripts never parse natural-language dispatch rules.
 The tool reference records verified flags, accepted values, omission behavior, and discovery.
 
-Effort precedence is a per-task captain instruction, then applicable dispatch profile or secondmate pin, then the fallback below.
+Effort precedence is a per-task user instruction, then applicable dispatch profile or secondmate pin, then the fallback below.
 Never replace either higher-precedence value.
 Use the fallback only when neither specifies effort.
 
 Use `low` for well-understood work with an explicit bounded path and `xhigh` for ambiguous investigation or design.
 Choose intermediate levels as complexity, uncertainty, blast radius, or open-ended reasoning rises.
 If an adapter lacks `xhigh`, cap at its highest supported non-`max` level rather than silently omitting the intent.
-Never select `max` through this fallback; only an explicit per-task or standing captain preference permits it.
+Never select `max` through this fallback; only an explicit per-task or standing user preference permits it.
 
 If requested effort is outside the adapter's accepted set, the spawn records `effort=` in task metadata but emits no effort flag.
 This preserves launch success instead of passing a known-bad value.

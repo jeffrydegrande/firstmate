@@ -266,5 +266,23 @@ tmux has-session -t firstmate 2>/dev/null \
 pass "real tmux: container_ensure falls back at once when a present ghostty cannot open a window"
 tmux kill-session -t firstmate 2>/dev/null || true
 
+# --- container_ensure names the session after the project, ghostty-first -----
+# One session per project: the name is the project directory basename,
+# sanitized to tmux's allowed set ("." becomes "-"). The per-project NEW-session
+# path must still go through ghostty first, so grouping and ghostty-first order
+# hold together rather than one replacing the other.
+: > "$GHOSTTY_MARKER"
+tmux kill-session -t my-project 2>/dev/null || true
+ensured=$(TMUX='' FM_GHOSTTY="$SHIM_DIR/ghostty-stub" fm_backend_tmux_container_ensure "/tmp/x/my.project") \
+  || fail "container_ensure failed on the per-project new-session path"
+[ "$ensured" = my-project ] \
+  || fail "container_ensure returned '$ensured', expected the sanitized project slug 'my-project'"
+grep -q 'my-project' "$GHOSTTY_MARKER" \
+  || fail "the per-project new-session path did not launch ghostty for the project session"
+tmux has-session -t my-project 2>/dev/null \
+  || fail "container_ensure did not establish the project session inside the ghostty step"
+pass "real tmux: container_ensure names the session after the project and creates it ghostty-first"
+tmux kill-session -t my-project 2>/dev/null || true
+
 cleanup_all
 trap - EXIT

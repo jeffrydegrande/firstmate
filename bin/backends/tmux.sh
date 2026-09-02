@@ -101,27 +101,32 @@ fm_backend_tmux_ghostty_new_session() {  # <session>
   return 1
 }
 
-# fm_backend_tmux_container_ensure: reuse the current tmux session when
-# firstmate itself runs inside tmux, else ensure a dedicated "firstmate"
-# session exists. Mirrors fm-spawn.sh's container-ensure block; prints the
-# resolved session name.
+# fm_backend_tmux_container_ensure: ensure a tmux session named after the
+# project, and print its name. One session per project: every task becomes
+# an fm-<id> window inside its project's session, so a project's tasks are
+# grouped in one session the operator can attach to by the project's name
+# (`tmux attach -t <project>`). This holds whether or not firstmate itself runs
+# inside tmux, so the primary session stays separate from the worker sessions.
+# The session name is the project directory basename, sanitized to tmux's
+# allowed set (no "." or ":", no whitespace); an empty or unnamed project falls
+# back to "firstmate".
 #
 # The NEW-session path launches a ghostty terminal first and creates the tmux
 # session inside it (fm_backend_tmux_ghostty_new_session), so the first window
 # is not left in a terminal-less detached session. When ghostty is unavailable
-# (a headless host), it falls back to the original detached `tmux new-session
-# -d` so session creation still succeeds. An already-present session is only
-# attached, never recreated, so subsequent windows keep the current behavior.
-fm_backend_tmux_container_ensure() {
-  if [ -n "${TMUX:-}" ]; then
-    tmux display-message -p '#S'
-  elif tmux has-session -t firstmate 2>/dev/null; then
-    printf 'firstmate'
-  else
-    fm_backend_tmux_ghostty_new_session firstmate \
-      || tmux new-session -d -s firstmate
-    printf 'firstmate'
-  fi
+# (a headless host), it falls back to a detached `tmux new-session -d` so
+# session creation still succeeds. An already-present session is only reused,
+# never recreated, so subsequent windows keep the current behavior.
+fm_backend_tmux_container_ensure() {  # [<proj-abs>] -> prints session name
+  local proj_abs=${1:-} slug
+  slug=$(basename -- "$proj_abs" 2>/dev/null)
+  slug=${slug//[.:]/-}
+  slug=${slug//[[:space:]]/-}
+  [ -n "$slug" ] || slug=firstmate
+  tmux has-session -t "=$slug" 2>/dev/null \
+    || fm_backend_tmux_ghostty_new_session "$slug" \
+    || tmux new-session -d -s "$slug"
+  printf '%s' "$slug"
 }
 
 # fm_backend_tmux_create_task: create the task's window in <proj-abs>,
