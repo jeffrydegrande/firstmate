@@ -16,37 +16,34 @@ No provisioning is required before the first task.
 
 ## Watching the crew
 
-For the best visible experience, launch the primary harness inside a tmux session:
+Firstmate groups tasks by project: each project gets its own detached tmux session named after the project, and each task becomes an `fm-<id>` window inside that session.
+The session name is the project directory basename, sanitized to tmux's allowed characters (no `.` or `:`, no whitespace).
+This holds whether or not the primary harness itself runs inside tmux, so the primary session stays separate from the per-project worker sessions.
+
+Attach to a project's session to watch its tasks:
 
 ```sh
-tmux new -s firstmate
+tmux attach -t <project>
 ```
 
-Crew tasks become windows in that session.
-`tmux display-message -p '#S'` prints its name.
-If the primary harness runs outside tmux, Firstmate uses a session named `firstmate`.
-It reuses that session when it already exists.
-It creates a new one in ghostty-first order: it launches a ghostty terminal, creates the tmux session inside that ghostty shell, then runs `treehouse get`, then the agent.
+Firstmate creates a project's session in ghostty-first order: it launches a ghostty terminal, creates the tmux session inside that ghostty shell, then runs `treehouse get`, then the agent.
 This gives the first window in a new session a ghostty terminal around it.
-When ghostty is not available, it falls back to a detached session:
-
-```sh
-tmux attach -t firstmate
-```
+When ghostty is not available, it falls back to a detached session.
+An existing session is reused, never recreated.
 
 Each task window is named `fm-<id>`.
 A Claude hook can rename a task window to `fm-<id>: <rich title>`.
 Firstmate finds its windows by the `fm-<id>` prefix, so a renamed window still resolves.
 
 ```sh
-tmux list-windows -t <session-name>
-tmux select-window -t <session-name>:fm-<id>
+tmux list-windows -t <project>
+tmux select-window -t <project>:fm-<id>
 ```
 
 Typing into an attached task window is authoritative direct intervention.
 Routine supervision does not require attachment: `bin/fm-peek.sh <id>` captures a bounded tail and `FM_HOME=<home> bin/fm-send.sh <id> '<text>'` steers the recorded endpoint.
 
-Verify setup by spawning a small task and confirming its `fm-<id>` window appears in the selected session.
+Verify setup by spawning a small task and confirming its `fm-<id>` window appears in that project's session.
 
 ## Current behavior and safety
 
