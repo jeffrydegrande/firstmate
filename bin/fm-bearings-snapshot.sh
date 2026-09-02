@@ -240,6 +240,13 @@ $(printf '%s' "$SNAP" | jq -r '.tasks[] | select(.kind != "secondmate") | .paths
 EOF
 
     for repo in $repos; do PR_REPOS_TOTAL=$((PR_REPOS_TOTAL + 1)); done
+    # Reverse-map a PR head branch to its task id through the snapshot's recorded
+    # branch (firstmate sets it at intake). The fm/ prefix strip stays the fallback
+    # for a head no recorded branch matches, including tasks that predate branch=.
+    BRANCH_TASK_MAP=$(printf '%s' "$SNAP" | jq -c '
+      reduce (.tasks[] | select(.kind != "secondmate")
+              | select((.branch // "") != "")) as $t
+        ({}; . + {($t.branch): $t.id})')
     nrepos=0; npr=0; nwarn=0; ncapped=0; rows='[]'
     pr_fetch_limit=$((FM_BEARINGS_PR_LIMIT + 1))
     for repo in $repos; do
@@ -249,11 +256,14 @@ EOF
         --json number,title,url,headRefName,reviewDecision,mergeable,statusCheckRollup 2>/dev/null) \
         || { nwarn=$((nwarn + 1)); continue; }
       [ -n "$out" ] || out='[]'
-      repo_result=$(printf '%s' "$out" | jq --arg repo "$repo" --argjson limit "$FM_BEARINGS_PR_LIMIT" '
+      repo_result=$(printf '%s' "$out" | jq --arg repo "$repo" --argjson limit "$FM_BEARINGS_PR_LIMIT" \
+        --argjson branch_map "$BRANCH_TASK_MAP" '
         [ .[] | {
           num:(.number|tostring),
           repo:$repo,
-          task:(if (.headRefName // "" | startswith("fm/")) then (.headRefName | ltrimstr("fm/")) else "-" end),
+          task:((.headRefName // "") as $h
+                | ($branch_map[$h]
+                   // (if ($h | startswith("fm/")) then ($h | ltrimstr("fm/")) else "-" end))),
           url:(.url // "-"),
           review:(.reviewDecision // "none"),
           mergeable:(.mergeable // "UNKNOWN"),

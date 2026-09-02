@@ -290,6 +290,67 @@ ROWS
   pass "fm-brief.sh: --yolo and scout/secondmate --mode are refused, never silently dropped"
 }
 
+# Firstmate sets the branch at intake. --branch must reach the Setup step, RULE1,
+# and the Definition of done with no leftover fm/ branch; an empty or
+# whitespace-only value is refused; and the legacy default warns loudly so a
+# caller that forgot --branch still works but knows the default is deprecated.
+test_branch_option_sets_every_reference() {
+  local home brief
+  home="$TMP_ROOT/branch-option-home"
+  mkdir -p "$home/data"
+
+  # local-only names the branch in the most places (Setup, RULE1, and the DOD).
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branch-c1 some-proj \
+    --mode local-only --branch jeffrydegrande/feat-x >/dev/null 2>&1 \
+    || fail "ship brief with --branch should scaffold"
+  brief="$home/data/brief-branch-c1/brief.md"
+  assert_grep "git checkout -b jeffrydegrande/feat-x" "$brief" \
+    "--branch did not reach the Setup step"
+  assert_grep "Work only on your \`jeffrydegrande/feat-x\` branch" "$brief" \
+    "--branch did not reach RULE1"
+  assert_grep "done: ready in branch jeffrydegrande/feat-x" "$brief" \
+    "--branch did not reach the Definition of done"
+  assert_no_grep "fm/" "$brief" "brief still carries a fm/ branch after --branch"
+  pass "fm-brief.sh: --branch names the branch in Setup, RULE1, and the DOD with no fm/ left"
+}
+
+test_branch_default_warns_and_bad_values_refuse() {
+  local home brief err out status
+  home="$TMP_ROOT/branch-default-home"
+  mkdir -p "$home/data"
+
+  # No --branch: the deprecated fm/<id> default is used, but with a loud warning.
+  err=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branch-d1 some-proj \
+    --mode local-only 2>&1 1>/dev/null)
+  brief="$home/data/brief-branch-d1/brief.md"
+  assert_present "$brief" "default-branch brief was not scaffolded"
+  assert_grep "git checkout -b fm/brief-branch-d1" "$brief" \
+    "default branch is not the legacy fm/<id> name"
+  assert_contains "$err" "deprecated" "missing --branch did not warn the default is deprecated"
+
+  # An empty or whitespace-only value must be refused. These pass a genuinely
+  # empty/whitespace argument, which word-splitting a table row cannot preserve.
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branch-d2 some-proj \
+    --mode local-only --branch "" 2>&1); status=$?
+  [ "$status" -ne 0 ] || fail "empty --branch: expected a non-zero exit"
+  assert_contains "$out" "requires a non-empty" "empty --branch: refusal did not explain why"
+  assert_absent "$home/data/brief-branch-d2/brief.md" "empty --branch: refused scaffold still wrote a brief"
+
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branch-d3 some-proj \
+    --mode local-only --branch "   " 2>&1); status=$?
+  [ "$status" -ne 0 ] || fail "whitespace --branch: expected a non-zero exit"
+  assert_contains "$out" "requires a non-empty" "whitespace --branch: refusal did not explain why"
+  assert_absent "$home/data/brief-branch-d3/brief.md" "whitespace --branch: refused scaffold still wrote a brief"
+
+  # --branch applies only to ship briefs.
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-branch-d4 some-proj \
+    --scout --branch foo 2>&1); status=$?
+  [ "$status" -ne 0 ] || fail "scout --branch: expected a non-zero exit"
+  assert_contains "$out" "--branch applies only to ship briefs" "scout --branch: refusal did not explain why"
+  assert_absent "$home/data/brief-branch-d4/brief.md" "scout --branch: refused scaffold still wrote a brief"
+  pass "fm-brief.sh: missing --branch warns, and empty/whitespace/scout --branch are refused"
+}
+
 test_faster_paths_use_configured_authority_without_stacked_review() {
   local home id brief
   home="$TMP_ROOT/configured-authority-home"
@@ -769,6 +830,8 @@ test_ship_modes_generate_clean_briefs
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply
+test_branch_option_sets_every_reference
+test_branch_default_warns_and_bad_values_refuse
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
 test_ship_project_memory_wording

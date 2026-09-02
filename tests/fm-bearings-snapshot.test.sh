@@ -1167,6 +1167,37 @@ test_include_prs_is_the_only_fetch_path() {
   pass "--include-prs is the only path that fetches, and it enriches correctly"
 }
 
+# A PR head that is not fm/<id> maps to its task through branch= in meta. The
+# fm/ prefix strip stays only as the fallback for a head no recorded branch matches.
+test_pr_head_maps_through_meta_branch() {
+  local home fakebin json
+  home=$(make_home branch-map)
+  fm_write_meta "$home/state/branch-task.meta" \
+    "window=firstmate:fm-branch-task" \
+    "worktree=$home/projects/branch-wt" \
+    "project=firstmate" \
+    "harness=claude" \
+    "kind=ship" \
+    "mode=local-only" \
+    "branch=jeffrydegrande/feat-x" \
+    "pr=https://github.com/kunchenguid/firstmate/pull/42"
+  fakebin=$(make_fakebin "$home"); : > "$home/net.log"
+  # A PR whose head branch is the intake name, not fm/<id>.
+  cat > "$fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+echo "gh $*" >> "$NET_LOG"
+cat <<'JSON'
+[{"number":42,"title":"Ship it","url":"https://github.com/kunchenguid/firstmate/pull/42","headRefName":"jeffrydegrande/feat-x","reviewDecision":"APPROVED","mergeable":"MERGEABLE","statusCheckRollup":[{"conclusion":"SUCCESS","status":"COMPLETED"}]}]
+JSON
+SH
+  chmod +x "$fakebin/gh"
+  json=$(run "$home" "$fakebin" --include-prs --json)
+  printf '%s' "$json" | jq -e '
+    .candidate_prs | any(.[]; .num == "42" and .task == "branch-task")
+  ' >/dev/null || fail "candidate_prs must map a non-fm PR head to its task through branch=: $json"
+  pass "fm-bearings-snapshot maps a PR head to a task through branch= in meta"
+}
+
 test_partial_github_failure_degrades() {
   local home fakebin json rc
   home=$(make_home partial); write_fixture "$home"
@@ -2321,6 +2352,7 @@ test_open_decision_surfaces_end_to_end
 test_report_pointers_surface
 test_superseded_queued_item_dropped_by_default
 test_include_prs_is_the_only_fetch_path
+test_pr_head_maps_through_meta_branch
 test_partial_github_failure_degrades
 test_perl_fallback_bounds_github_call
 test_section_caps_and_expansion_flags

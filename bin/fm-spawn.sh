@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch <name>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
 #        fm-spawn.sh <task-id> <project-dir> --scout [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
@@ -16,6 +16,16 @@
 #   loud one-line deviation notice is printed and the spawn continues.
 #   no-mistakes-prod-only is a registry policy rather than a task mode and is
 #   refused as a flag value.
+#   --branch <name> is this ship task's branch, recorded as branch= in
+#   state/<id>.meta so the landing (bin/fm-merge-local.sh) and review
+#   (bin/fm-review-diff.sh) helpers resolve the real branch instead of assuming
+#   fm/<id>. When --branch is absent, the branch is read back from the brief's
+#   Setup step ("git checkout -b <name>") so meta always records the name the
+#   worker was told to create; when --branch is present it must match that Setup
+#   name or the spawn is refused, the same drift guard the delivery-mode line
+#   uses. --branch applies only to ship spawns; a scout records no branch and a
+#   secondmate records none either. A ship task launched from a brief with no
+#   Setup branch line records no branch=, and the helpers fall back to fm/<id>.
 #        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>]
 #   --relaunch launches a replacement agent for an EXISTING task into that
 #   task's own recorded endpoint and worktree instead of creating either. It is
@@ -200,9 +210,10 @@
 # data/backlog.md. An automatic-backend home with a backlog but no compatible
 # tasks-axi refuses before creating any lifecycle state.
 # On success prints: spawned <id> harness=<name> kind=<ship|scout|secondmate> [mode=<mode> yolo=<on|off>] window=<backend-target> worktree=<path>
-# A ship task records the explicit mode/yolo it was passed; a secondmate spawn records
-# mode=secondmate, yolo=off, home=, and projects=; a scout records neither, and both the
-# success line and state/<id>.meta omit them.
+# A ship task records the explicit mode/yolo it was passed plus branch= (the name
+# from --branch or read back from the brief's Setup step); a secondmate spawn records
+# mode=secondmate, yolo=off, home=, and projects=; a scout records neither mode/yolo
+# nor branch, and both the success line and state/<id>.meta omit them.
 # Every fresh spawn or relaunch records a new spawn_gen= incarnation token so durable
 # consumers can distinguish a replacement worker that reuses the same task id.
 # When the home session's frozen trace-context decision is enabled (see
@@ -317,6 +328,8 @@ EFFORT=
 BACKEND_ARG=
 MODE=
 YOLO=
+BRANCH_ARG=
+BRANCH=
 TRACEPARENT_ARG=
 HARNESS_SET=0
 MODEL_SET=0
@@ -324,6 +337,7 @@ EFFORT_SET=0
 BACKEND_SET=0
 MODE_SET=0
 YOLO_SET=0
+BRANCH_SET=0
 TRACEPARENT_SET=0
 RELAUNCH=0
 POS=()
@@ -340,6 +354,7 @@ for a in "$@"; do
       backend) BACKEND_ARG=$a; BACKEND_SET=1 ;;
       mode) MODE=$a; MODE_SET=1 ;;
       yolo) YOLO=$a; YOLO_SET=1 ;;
+      branch) BRANCH_ARG=$a; BRANCH_SET=1 ;;
       traceparent) TRACEPARENT_ARG=$a; TRACEPARENT_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
@@ -362,6 +377,8 @@ for a in "$@"; do
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
     --yolo) want_value=yolo ;;
     --yolo=*) YOLO=${a#--yolo=}; YOLO_SET=1 ;;
+    --branch) want_value=branch ;;
+    --branch=*) BRANCH_ARG=${a#--branch=}; BRANCH_SET=1 ;;
     --traceparent) want_value=traceparent ;;
     --traceparent=*) TRACEPARENT_ARG=${a#--traceparent=}; TRACEPARENT_SET=1 ;;
     *) POS+=("$a") ;;
@@ -374,6 +391,12 @@ done
 [ "$BACKEND_SET" -eq 0 ] || [ -n "$BACKEND_ARG" ] || { echo "error: --backend requires a non-empty value" >&2; exit 1; }
 [ "$MODE_SET" -eq 0 ] || [ -n "$MODE" ] || { echo "error: --mode requires a non-empty value" >&2; exit 1; }
 [ "$YOLO_SET" -eq 0 ] || [ -n "$YOLO" ] || { echo "error: --yolo requires a non-empty value" >&2; exit 1; }
+if [ "$BRANCH_SET" -eq 1 ]; then
+  case "$BRANCH_ARG" in
+    *[![:space:]]*) : ;;
+    *) echo "error: --branch requires a non-empty, non-whitespace value" >&2; exit 1 ;;
+  esac
+fi
 [ "$TRACEPARENT_SET" -eq 0 ] || [ -n "$TRACEPARENT_ARG" ] || { echo "error: --traceparent requires a non-empty value" >&2; exit 1; }
 # A parent-delivered carrier replaces this home's own resolution, so it is
 # refused unless it is a secondmate spawn carrying a strictly valid W3C value.
@@ -402,6 +425,7 @@ if [ "$RELAUNCH" -eq 1 ]; then
   [ "$KIND_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded kind; --scout/--secondmate cannot override it" >&2; exit 1; }
   [ "$MODE_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded delivery mode; --mode cannot override it" >&2; exit 1; }
   [ "$YOLO_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded yolo posture; --yolo cannot override it" >&2; exit 1; }
+  [ "$BRANCH_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded branch; --branch cannot override it" >&2; exit 1; }
 else
   # Delivery contract (AGENTS.md section 7). A ship task's mode and yolo are
   # firstmate's per-task decision, so they are required and closed-set validated
@@ -434,6 +458,10 @@ else
     }
     [ "$YOLO_SET" -eq 0 ] || {
       echo "error: --yolo applies only to ship spawns; a scout delivers a report and a secondmate records its own fixed posture" >&2
+      exit 1
+    }
+    [ "$BRANCH_SET" -eq 0 ] || {
+      echo "error: --branch applies only to ship spawns; a scout works detached and a secondmate creates no branch" >&2
       exit 1
     }
   fi
@@ -825,6 +853,7 @@ spawn_abort_cleanup() {
             echo "kind=$KIND"
             [ -z "${MODE:-}" ] || echo "mode=$MODE"
             [ -z "${YOLO:-}" ] || echo "yolo=$YOLO"
+            [ -z "${BRANCH:-}" ] || echo "branch=$BRANCH"
             echo "tasktmp=${TASK_TMP:-}"
             echo "model=${MODEL:-default}"
             echo "effort=${EFFORT:-default}"
@@ -1132,6 +1161,10 @@ if [ "$RELAUNCH" -eq 1 ]; then
   [ -n "$KIND" ] || KIND=ship
   MODE=$(fm_meta_get "$RELAUNCH_META" mode)
   YOLO=$(fm_meta_get "$RELAUNCH_META" yolo)
+  # The branch is fixed at first spawn; a relaunch reuses the recorded value so
+  # the landing and review helpers keep resolving the same branch. preserve_relaunch_meta
+  # lists branch among its owned keys, so the write below is the single carrier.
+  BRANCH=$(fm_meta_get "$RELAUNCH_META" branch)
   RELAUNCH_WT=$(fm_meta_get "$RELAUNCH_META" worktree)
   [ -n "$RELAUNCH_WT" ] && [ -d "$RELAUNCH_WT" ] || {
     echo "error: task $ID's recorded worktree '${RELAUNCH_WT:-none}' is missing; refusing to relaunch without the local copy its work lives in" >&2
@@ -1798,6 +1831,26 @@ if [ "$KIND" = ship ]; then
   if [ -n "$STANDING_MODE" ] && [ "$STANDING_MODE" != no-mistakes-prod-only ] \
      && [ "$(delivery_rigor_rank "$MODE")" -lt "$(delivery_rigor_rank "$STANDING_MODE")" ]; then
     echo "notice: $ID ships mode=$MODE while the standing posture for $PROJ_NAME is $STANDING_MODE - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state" >&2
+  fi
+  # Branch the worker is told to create. fm-brief.sh records it in the Setup step
+  # ("git checkout -b <name>"). The recorded branch= must match what the worker
+  # actually creates, so the brief's Setup name is authoritative: an explicit
+  # --branch is a redundant assertion that must agree, and its disagreement is a
+  # refusal, the same drift guard the delivery-mode line above uses. A relaunch
+  # reuses the recorded value read earlier and never re-reads the brief.
+  if [ "$RELAUNCH" -eq 0 ]; then
+    BRIEF_BRANCH=$(sed -n 's/^.*`git checkout -b \([^`]*\)`.*$/\1/p' "$BRIEF" | head -n 1)
+    if [ "$BRANCH_SET" -eq 1 ] && [ -n "$BRIEF_BRANCH" ] && [ "$BRIEF_BRANCH" != "$BRANCH_ARG" ]; then
+      echo "error: branch mismatch for $ID: the brief creates '$BRIEF_BRANCH' but this spawn passed --branch '$BRANCH_ARG'; correct the flag or re-scaffold the brief so the worker's branch and the task record agree" >&2
+      exit 1
+    fi
+    if [ -n "$BRIEF_BRANCH" ]; then
+      BRANCH=$BRIEF_BRANCH
+    elif [ "$BRANCH_SET" -eq 1 ]; then
+      BRANCH=$BRANCH_ARG
+    else
+      BRANCH=
+    fi
   fi
 fi
 
@@ -2846,7 +2899,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -2861,6 +2914,10 @@ preserve_relaunch_meta() {
   echo "kind=$KIND"
   [ -z "$MODE" ] || echo "mode=$MODE"
   [ -z "$YOLO" ] || echo "yolo=$YOLO"
+  # branch= records the name the worker creates so the landing and review helpers
+  # resolve the real branch; a ship brief with no Setup branch line leaves it
+  # empty and those helpers fall back to fm/<id>. Scouts and secondmates record none.
+  [ -z "${BRANCH:-}" ] || echo "branch=$BRANCH"
   echo "tasktmp=$TASK_TMP"
   echo "model=${MODEL:-default}"
   echo "effort=${EFFORT:-default}"
