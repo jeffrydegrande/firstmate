@@ -32,9 +32,16 @@
 # through meta - an ad hoc window name with no recorded task. Mirrors the
 # `tmux list-windows -a ... | grep` pipeline that used to live inline in
 # fm-send.sh's and fm-peek.sh's own (until now duplicated) resolve().
+#
+# The match is prefix-anchored on the window name, not exact: a Claude hook
+# renames each task window to "fm-<task>: <rich title>", so the recorded bare
+# fm-<task> handle must still resolve after the title lands. The name matches
+# only when the next character is a title separator (": ") or end of line, so
+# fm-<task> never over-matches an unrelated fm-<task>-2 sibling. Keeps -m1 so
+# the first live window still wins.
 fm_backend_tmux_resolve_bare_selector() {  # <name>
   local name=$1
-  tmux list-windows -a -F '#{session_name}:#{window_name}' | grep -m1 ":$name\$" \
+  tmux list-windows -a -F '#{session_name}:#{window_name}' | grep -E -m1 ":$name(: |\$)" \
     || { echo "error: no window named $name" >&2; return 1; }
 }
 
@@ -60,15 +67,59 @@ fm_backend_tmux_send_text_submit() {  # <target> <text> <retries> <enter-sleep> 
   fm_tmux_submit_core "$@"
 }
 
+# fm_backend_tmux_ghostty_new_session: launch a ghostty terminal that creates
+# or attaches the given tmux session inside its shell, then wait until the
+# session exists before returning. This gives the FIRST window in a new session
+# a ghostty terminal around it, so the order is ghostty, then tmux, then (in the
+# caller) treehouse and the agent. Ghostty is a GUI process, so it is launched
+# detached; firstmate must not block on it. `new-session -A` attaches if the
+# session already races into existence and creates it otherwise.
+#
+# The ghostty binary is resolved through FM_GHOSTTY so a headless test can
+# substitute a stub. FM_GHOSTTY_SESSION_WAIT_SAMPLES bounds the readiness poll
+# (0.1s per sample). Returns nonzero if the session never appears, which lets
+# the caller fall back to a plain detached session on a host with no ghostty.
+#
+# The poll also watches the ghostty child: when ghostty exits before the session
+# appears, its terminal never opened (a display-less or SSH host with ghostty
+# installed system-wide), so the fallback runs at once instead of waiting out
+# the whole poll budget. The session-exists check runs first, so a ghostty that
+# creates the session and then exits still returns success.
+fm_backend_tmux_ghostty_new_session() {  # <session>
+  local ses=$1 ghostty samples i=0 pid
+  ghostty=${FM_GHOSTTY:-ghostty}
+  samples=${FM_GHOSTTY_SESSION_WAIT_SAMPLES:-100}
+  command -v "$ghostty" >/dev/null 2>&1 || return 1
+  "$ghostty" -e tmux new-session -A -s "$ses" >/dev/null 2>&1 &
+  pid=$!
+  while [ "$i" -lt "$samples" ]; do
+    tmux has-session -t "$ses" 2>/dev/null && return 0
+    kill -0 "$pid" 2>/dev/null || return 1
+    sleep 0.1
+    i=$((i + 1))
+  done
+  return 1
+}
+
 # fm_backend_tmux_container_ensure: reuse the current tmux session when
-# firstmate itself runs inside tmux, else ensure a dedicated detached
-# "firstmate" session exists. Mirrors fm-spawn.sh's container-ensure block;
-# prints the resolved session name.
+# firstmate itself runs inside tmux, else ensure a dedicated "firstmate"
+# session exists. Mirrors fm-spawn.sh's container-ensure block; prints the
+# resolved session name.
+#
+# The NEW-session path launches a ghostty terminal first and creates the tmux
+# session inside it (fm_backend_tmux_ghostty_new_session), so the first window
+# is not left in a terminal-less detached session. When ghostty is unavailable
+# (a headless host), it falls back to the original detached `tmux new-session
+# -d` so session creation still succeeds. An already-present session is only
+# attached, never recreated, so subsequent windows keep the current behavior.
 fm_backend_tmux_container_ensure() {
   if [ -n "${TMUX:-}" ]; then
     tmux display-message -p '#S'
+  elif tmux has-session -t firstmate 2>/dev/null; then
+    printf 'firstmate'
   else
-    tmux has-session -t firstmate 2>/dev/null || tmux new-session -d -s firstmate
+    fm_backend_tmux_ghostty_new_session firstmate \
+      || tmux new-session -d -s firstmate
     printf 'firstmate'
   fi
 }
@@ -318,7 +369,15 @@ fm_backend_tmux_agent_state() {  # <target>
     esac
     return 0
   fi
-  if ! printf '%s\n' "$windows" | grep -Fqx "$window"; then
+  # Prefix-anchored, not exact: the recorded handle is the bare fm-<task> name,
+  # but a Claude hook renames the live window to "fm-<task>: <rich title>". An
+  # exact match would read the renamed window as gone and report `missing`,
+  # which can launch a duplicate agent onto a live worktree. Match the recorded
+  # name only when the next character is a title separator (": ") or end of
+  # line, so fm-<task> still confirms membership without matching an unrelated
+  # fm-<task>-2 sibling. The recorded name is a fm-<task> slug with no regex
+  # metacharacters, so it is safe to use as the pattern.
+  if ! printf '%s\n' "$windows" | grep -Eq "^$window(: |\$)"; then
     printf 'missing'
     return 0
   fi

@@ -156,6 +156,29 @@ if fm_backend_tmux_resolve_bare_selector "no-such-window-xyz" 2>/dev/null; then
 fi
 pass "real tmux: fm_backend_tmux_resolve_bare_selector fails for a window that does not exist"
 
+# --- resolve_bare_selector matches a hook-renamed window by its bare name -----
+# A Claude hook renames each task window to "fm-<task>: <rich title>", so the
+# bare fm-<task> selector must still resolve after the title lands.
+tmux rename-window -t "$TARGET" "$WINDOW: shipping the thing" \
+  || fail "could not rename the window to its rich title"
+resolved=$(fm_backend_tmux_resolve_bare_selector "$WINDOW") \
+  || fail "fm_backend_tmux_resolve_bare_selector failed to find the renamed window by its bare name"
+[ "$resolved" = "$SESSION:$WINDOW: shipping the thing" ] \
+  || fail "resolve after rename returned '$resolved', expected '$SESSION:$WINDOW: shipping the thing'"
+pass "real tmux: fm_backend_tmux_resolve_bare_selector finds a 'fm-<task>: <title>' window by its bare name"
+# tmux resolves a -t target by prefix, so $TARGET restores the bare name.
+tmux rename-window -t "$TARGET" "$WINDOW" || fail "could not restore the window name"
+
+# The prefix must not widen into a substring: only fm-orphan-2 exists, so the
+# bare selector fm-orphan must not match it.
+tmux new-window -d -t "$SESSION:" -n "fm-orphan-2" -c "$HOME" \
+  || fail "could not create the suffixed sibling window"
+if fm_backend_tmux_resolve_bare_selector "fm-orphan" 2>/dev/null; then
+  fail "resolve must not match an unrelated fm-orphan-2 window from the bare selector fm-orphan"
+fi
+pass "real tmux: fm_backend_tmux_resolve_bare_selector does not over-match a suffixed sibling"
+tmux kill-window -t "=$SESSION:=fm-orphan-2" 2>/dev/null || true
+
 # --- kill and recovery-grade missing-window classification ------------------
 
 fm_backend_tmux_kill "$TARGET"
@@ -168,6 +191,80 @@ state=$(fm_backend_agent_state tmux "$TARGET")
 # Best-effort contract: killing an already-gone window must not error.
 fm_backend_tmux_kill "$TARGET" || fail "fm_backend_tmux_kill on an already-dead target must stay best-effort (never fail)"
 pass "real tmux: kill removes the window and the readable session inventory authoritatively classifies it missing"
+
+# --- container_ensure launches ghostty before creating a NEW session ---------
+# The first window in a new session must have a ghostty terminal around it, so
+# the new-session path launches ghostty (which creates the tmux session inside
+# its shell) instead of a terminal-less detached session. A real ghostty binary
+# is a GUI app, so this proves the behavior through an FM_GHOSTTY stub that
+# records its invocation and stands the session up on the private socket.
+GHOSTTY_MARKER="$SHIM_DIR/ghostty-invoked"
+cat > "$SHIM_DIR/ghostty-stub" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$GHOSTTY_MARKER"
+# Emulate ghostty running its '-e tmux new-session -A -s <ses>' command, but
+# detached so this headless test needs no controlling terminal.
+exec "$REAL_TMUX" -L "$SOCKET" new-session -d -s "\${@: -1}"
+SH
+chmod +x "$SHIM_DIR/ghostty-stub"
+
+tmux kill-session -t firstmate 2>/dev/null || true
+ensured=$(TMUX='' FM_GHOSTTY="$SHIM_DIR/ghostty-stub" fm_backend_tmux_container_ensure) \
+  || fail "container_ensure failed on the new-session path"
+[ "$ensured" = firstmate ] || fail "container_ensure returned '$ensured', expected 'firstmate'"
+[ -f "$GHOSTTY_MARKER" ] || fail "the new-session path did not launch ghostty first"
+tmux has-session -t firstmate 2>/dev/null \
+  || fail "container_ensure did not establish the tmux session inside the ghostty step"
+pass "real tmux: container_ensure launches ghostty first, then the tmux session exists"
+
+# An already-present session is only attached, never recreated: no second launch.
+: > "$GHOSTTY_MARKER"
+ensured=$(TMUX='' FM_GHOSTTY="$SHIM_DIR/ghostty-stub" fm_backend_tmux_container_ensure) \
+  || fail "container_ensure failed when the session already exists"
+[ "$ensured" = firstmate ] \
+  || fail "container_ensure returned '$ensured' for an existing session, expected 'firstmate'"
+[ ! -s "$GHOSTTY_MARKER" ] \
+  || fail "container_ensure relaunched ghostty for an already-present session"
+pass "real tmux: container_ensure reuses an existing session without relaunching ghostty"
+tmux kill-session -t firstmate 2>/dev/null || true
+
+# The new-session path falls back to a detached session when ghostty is absent,
+# so session creation still succeeds on a headless host.
+tmux kill-session -t firstmate 2>/dev/null || true
+ensured=$(TMUX='' FM_GHOSTTY="no-such-ghostty-binary-xyz" fm_backend_tmux_container_ensure) \
+  || fail "container_ensure failed to fall back when ghostty is absent"
+[ "$ensured" = firstmate ] \
+  || fail "container_ensure fallback returned '$ensured', expected 'firstmate'"
+tmux has-session -t firstmate 2>/dev/null \
+  || fail "container_ensure did not create the detached session when ghostty is absent"
+pass "real tmux: container_ensure falls back to a detached session when ghostty is unavailable"
+tmux kill-session -t firstmate 2>/dev/null || true
+
+# A present ghostty that cannot open a window (a display-less or SSH host) exits
+# without creating the session. The readiness poll must notice that exit and
+# fall back at once, not wait out the whole budget. A large sample budget makes
+# a stall obvious: with a 30s budget, a fast fallback proves the exit is caught.
+cat > "$SHIM_DIR/ghostty-noshow" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$SHIM_DIR/ghostty-noshow-invoked"
+exit 1
+SH
+chmod +x "$SHIM_DIR/ghostty-noshow"
+tmux kill-session -t firstmate 2>/dev/null || true
+start=$(date +%s)
+ensured=$(TMUX='' FM_GHOSTTY="$SHIM_DIR/ghostty-noshow" FM_GHOSTTY_SESSION_WAIT_SAMPLES=300 \
+  fm_backend_tmux_container_ensure) \
+  || fail "container_ensure failed when ghostty cannot open a window"
+elapsed=$(( $(date +%s) - start ))
+[ "$ensured" = firstmate ] \
+  || fail "container_ensure returned '$ensured' after a ghostty that cannot open a window"
+[ -f "$SHIM_DIR/ghostty-noshow-invoked" ] || fail "the ghostty step was not attempted"
+tmux has-session -t firstmate 2>/dev/null \
+  || fail "container_ensure did not fall back to a detached session after ghostty failed to open"
+[ "$elapsed" -lt 10 ] \
+  || fail "container_ensure stalled ${elapsed}s waiting out the poll budget instead of catching the ghostty exit"
+pass "real tmux: container_ensure falls back at once when a present ghostty cannot open a window"
+tmux kill-session -t firstmate 2>/dev/null || true
 
 cleanup_all
 trap - EXIT
