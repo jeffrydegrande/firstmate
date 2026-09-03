@@ -202,9 +202,24 @@ GHOSTTY_MARKER="$SHIM_DIR/ghostty-invoked"
 cat > "$SHIM_DIR/ghostty-stub" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$GHOSTTY_MARKER"
-# Emulate ghostty running its '-e tmux new-session -A -s <ses>' command, but
-# detached so this headless test needs no controlling terminal.
-exec "$REAL_TMUX" -L "$SOCKET" new-session -d -s "\${@: -1}"
+# Emulate ghostty running its '-e tmux new-session -A -s <ses> [-c <dir>]'
+# command, but detached so this headless test needs no controlling terminal.
+# Parse the session name and the optional start directory by flag rather than
+# by argument position, so the -c start directory the adapter passes is honored
+# exactly as a real ghostty-launched tmux would honor it.
+ses= ; dir=
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    -s) ses=\$2; shift 2 ;;
+    -c) dir=\$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ -n "\$dir" ]; then
+  exec "$REAL_TMUX" -L "$SOCKET" new-session -d -s "\$ses" -c "\$dir"
+else
+  exec "$REAL_TMUX" -L "$SOCKET" new-session -d -s "\$ses"
+fi
 SH
 chmod +x "$SHIM_DIR/ghostty-stub"
 
@@ -215,7 +230,13 @@ ensured=$(TMUX='' FM_GHOSTTY="$SHIM_DIR/ghostty-stub" fm_backend_tmux_container_
 [ -f "$GHOSTTY_MARKER" ] || fail "the new-session path did not launch ghostty first"
 tmux has-session -t firstmate 2>/dev/null \
   || fail "container_ensure did not establish the tmux session inside the ghostty step"
-pass "real tmux: container_ensure launches ghostty first, then the tmux session exists"
+# Firstmate's own session (empty proj_abs) forces no start directory: the
+# new-session command must carry no -c, so the base shell keeps firstmate's own
+# directory instead of a project's.
+case "$(cat "$GHOSTTY_MARKER")" in
+  *" -c "*) fail "firstmate's own session must not force a start directory (unexpected -c)" ;;
+esac
+pass "real tmux: container_ensure launches ghostty first, then the tmux session exists, with no forced start directory for firstmate's own session"
 
 # An already-present session is only attached, never recreated: no second launch.
 : > "$GHOSTTY_MARKER"
@@ -266,22 +287,49 @@ tmux has-session -t firstmate 2>/dev/null \
 pass "real tmux: container_ensure falls back at once when a present ghostty cannot open a window"
 tmux kill-session -t firstmate 2>/dev/null || true
 
-# --- container_ensure names the session after the project, ghostty-first -----
+# --- container_ensure names the session after the project, ghostty-first, and
+# --- starts its base shell in the project directory --------------------------
 # One session per project: the name is the project directory basename,
 # sanitized to tmux's allowed set ("." becomes "-"). The per-project NEW-session
 # path must still go through ghostty first, so grouping and ghostty-first order
-# hold together rather than one replacing the other.
+# hold together rather than one replacing the other. It must also start the
+# session in the project directory (-c "$proj_abs"), so the session's own
+# default shell (its first window's base shell) opens in the project, matching
+# the fm-<id> task windows. A real project directory is used because tmux
+# refuses -c on a directory that does not exist.
+PROJDIR="$SHIM_DIR/my.project"
+mkdir -p "$PROJDIR"
 : > "$GHOSTTY_MARKER"
 tmux kill-session -t my-project 2>/dev/null || true
-ensured=$(TMUX='' FM_GHOSTTY="$SHIM_DIR/ghostty-stub" fm_backend_tmux_container_ensure "/tmp/x/my.project") \
+ensured=$(TMUX='' FM_GHOSTTY="$SHIM_DIR/ghostty-stub" fm_backend_tmux_container_ensure "$PROJDIR") \
   || fail "container_ensure failed on the per-project new-session path"
 [ "$ensured" = my-project ] \
   || fail "container_ensure returned '$ensured', expected the sanitized project slug 'my-project'"
 grep -q 'my-project' "$GHOSTTY_MARKER" \
   || fail "the per-project new-session path did not launch ghostty for the project session"
+grep -Fq -- "-c $PROJDIR" "$GHOSTTY_MARKER" \
+  || fail "the per-project ghostty path did not pass -c <proj-abs> to new-session"$'\n'"$(cat "$GHOSTTY_MARKER")"
 tmux has-session -t my-project 2>/dev/null \
   || fail "container_ensure did not establish the project session inside the ghostty step"
-pass "real tmux: container_ensure names the session after the project and creates it ghostty-first"
+base_cwd=$(tmux display-message -p -t "my-project:" '#{pane_current_path}')
+[ "$base_cwd" = "$PROJDIR" ] \
+  || fail "the ghostty project session's base shell opened in '$base_cwd', expected the project '$PROJDIR'"
+pass "real tmux: container_ensure names the session after the project, creates it ghostty-first, and starts its base shell in the project"
+tmux kill-session -t my-project 2>/dev/null || true
+
+# The fallback path (no ghostty) must also start the project session in the
+# project directory. A real tmux command carries no recorded arguments to
+# inspect, so the base shell's working directory is the assertion that -c
+# reached new-session.
+tmux kill-session -t my-project 2>/dev/null || true
+ensured=$(TMUX='' FM_GHOSTTY="no-such-ghostty-binary-xyz" fm_backend_tmux_container_ensure "$PROJDIR") \
+  || fail "container_ensure failed on the per-project fallback path"
+[ "$ensured" = my-project ] \
+  || fail "container_ensure fallback returned '$ensured', expected the sanitized project slug 'my-project'"
+base_cwd=$(tmux display-message -p -t "my-project:" '#{pane_current_path}')
+[ "$base_cwd" = "$PROJDIR" ] \
+  || fail "the fallback project session's base shell opened in '$base_cwd', expected the project '$PROJDIR'"
+pass "real tmux: container_ensure starts the project session's base shell in the project on the fallback path too"
 tmux kill-session -t my-project 2>/dev/null || true
 
 cleanup_all
