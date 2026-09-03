@@ -85,12 +85,20 @@ fm_backend_tmux_send_text_submit() {  # <target> <text> <retries> <enter-sleep> 
 # installed system-wide), so the fallback runs at once instead of waiting out
 # the whole poll budget. The session-exists check runs first, so a ghostty that
 # creates the session and then exits still returns success.
-fm_backend_tmux_ghostty_new_session() {  # <session>
-  local ses=$1 ghostty samples i=0 pid
+#
+# <proj-abs>, when given, is the session's start directory, so the session's own
+# default shell (its first window's base shell) opens in the project rather than
+# in firstmate's own directory. An empty <proj-abs> forces no start directory.
+fm_backend_tmux_ghostty_new_session() {  # <session> [<proj-abs>]
+  local ses=$1 proj_abs=${2:-} ghostty samples i=0 pid
   ghostty=${FM_GHOSTTY:-ghostty}
   samples=${FM_GHOSTTY_SESSION_WAIT_SAMPLES:-100}
   command -v "$ghostty" >/dev/null 2>&1 || return 1
-  "$ghostty" -e tmux new-session -A -s "$ses" >/dev/null 2>&1 &
+  if [ -n "$proj_abs" ]; then
+    "$ghostty" -e tmux new-session -A -s "$ses" -c "$proj_abs" >/dev/null 2>&1 &
+  else
+    "$ghostty" -e tmux new-session -A -s "$ses" >/dev/null 2>&1 &
+  fi
   pid=$!
   while [ "$i" -lt "$samples" ]; do
     tmux has-session -t "$ses" 2>/dev/null && return 0
@@ -117,15 +125,26 @@ fm_backend_tmux_ghostty_new_session() {  # <session>
 # (a headless host), it falls back to a detached `tmux new-session -d` so
 # session creation still succeeds. An already-present session is only reused,
 # never recreated, so subsequent windows keep the current behavior.
+#
+# A NEW project session starts in the project directory (-c "$proj_abs"), so its
+# default shell (the first window's base shell) opens in the project, matching
+# the fm-<id> task windows. Firstmate's own session (empty proj_abs, slug
+# "firstmate") forces no start directory and stays in firstmate's own directory.
 fm_backend_tmux_container_ensure() {  # [<proj-abs>] -> prints session name
   local proj_abs=${1:-} slug
   slug=$(basename -- "$proj_abs" 2>/dev/null)
   slug=${slug//[.:]/-}
   slug=${slug//[[:space:]]/-}
   [ -n "$slug" ] || slug=firstmate
-  tmux has-session -t "=$slug" 2>/dev/null \
-    || fm_backend_tmux_ghostty_new_session "$slug" \
-    || tmux new-session -d -s "$slug"
+  if [ -n "$proj_abs" ]; then
+    tmux has-session -t "=$slug" 2>/dev/null \
+      || fm_backend_tmux_ghostty_new_session "$slug" "$proj_abs" \
+      || tmux new-session -d -s "$slug" -c "$proj_abs"
+  else
+    tmux has-session -t "=$slug" 2>/dev/null \
+      || fm_backend_tmux_ghostty_new_session "$slug" \
+      || tmux new-session -d -s "$slug"
+  fi
   printf '%s' "$slug"
 }
 
