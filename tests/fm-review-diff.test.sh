@@ -169,8 +169,45 @@ test_unreachable_pr_head_falls_back_with_warning() {
   pass "fm-review-diff falls back to local branch with a warning when PR head is unreachable"
 }
 
+# branch= in meta names the branch to review; the helper resolves it instead of
+# assuming fm/<id>. A task whose meta has no branch= keeps using fm/<id>, which
+# the cases above already cover.
+test_meta_branch_selects_review_branch() {
+  local case_dir out
+  case_dir="$TMP_ROOT/meta-branch"
+  mkdir -p "$case_dir/state"
+  git init -q --bare "$case_dir/origin.git"
+  git -C "$case_dir/origin.git" symbolic-ref HEAD refs/heads/main
+  git clone -q "$case_dir/origin.git" "$case_dir/_seed" 2>/dev/null
+  printf 'base\n' > "$case_dir/_seed/feature.txt"
+  git -C "$case_dir/_seed" add feature.txt
+  git -C "$case_dir/_seed" -c user.email=t@t -c user.name=t commit -qm "origin baseline"
+  git -C "$case_dir/_seed" push -q origin main
+  rm -rf "$case_dir/_seed"
+  git clone -q "$case_dir/origin.git" "$case_dir/project"
+  git -C "$case_dir/project" remote set-head origin main 2>/dev/null || true
+  git -C "$case_dir/project" worktree add -q -b jeffrydegrande/feat-x "$case_dir/wt" main
+  printf 'branch-change\n' > "$case_dir/wt/feature.txt"
+  git -C "$case_dir/wt" add feature.txt
+  git -C "$case_dir/wt" commit -qm "change on the intake branch"
+  touch "$case_dir/state/.last-watcher-beat"
+
+  fm_write_meta "$case_dir/state/task-x1.meta" \
+    "window=fm-task-x1" \
+    "worktree=$case_dir/wt" \
+    "project=$case_dir/project" \
+    "branch=jeffrydegrande/feat-x"
+
+  out=$(run_review_diff "$case_dir" task-x1 2> "$case_dir/stderr")
+  assert_contains "$out" '+branch-change' "meta-branch: diff should use the recorded branch"
+  assert_not_contains "$(cat "$case_dir/stderr")" 'does not exist' \
+    "meta-branch: recorded branch must resolve without error"
+  pass "fm-review-diff resolves branch= from meta"
+}
+
 test_pr_meta_uses_pr_head_not_stale_local
 test_pr_meta_fetches_pull_head_without_recorded_sha
 test_stale_recorded_pr_head_loses_to_fetched_pull_head
 test_no_pr_meta_uses_local_branch
 test_unreachable_pr_head_falls_back_with_warning
+test_meta_branch_selects_review_branch

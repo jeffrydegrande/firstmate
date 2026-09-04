@@ -44,6 +44,7 @@ META="$STATE/$ID.meta"
 
 WT=$(grep '^worktree=' "$META" | cut -d= -f2-)
 PROJ=$(grep '^project=' "$META" | cut -d= -f2-)
+META_BRANCH=$(grep '^branch=' "$META" | cut -d= -f2- || true)
 [ -n "$WT" ] || { echo "error: meta for task $ID is missing worktree=" >&2; exit 1; }
 [ -n "$PROJ" ] || { echo "error: meta for task $ID is missing project=" >&2; exit 1; }
 [ -d "$WT" ] || { echo "error: worktree for task $ID is missing: $WT" >&2; exit 1; }
@@ -67,10 +68,14 @@ default_branch() {
 
 DEFAULT=$(default_branch) || { echo "error: cannot determine default branch for $PROJ; expected origin/HEAD, main, or master" >&2; exit 1; }
 
-BRANCH="fm/$ID"
+# Branch name comes from branch= in meta (firstmate sets it at intake); a task
+# whose meta has no branch= falls back to the legacy fm/<id> name.
+BRANCH=$META_BRANCH
+[ -n "$BRANCH" ] || BRANCH="fm/$ID"
 if ! git -C "$WT" rev-parse --verify --quiet "refs/heads/$BRANCH" >/dev/null; then
+  RECORDED_BRANCH=$BRANCH
   BRANCH=$(git -C "$WT" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-  [ -n "$BRANCH" ] || { echo "error: branch fm/$ID does not exist and worktree $WT is detached" >&2; exit 1; }
+  [ -n "$BRANCH" ] || { echo "error: branch $RECORDED_BRANCH does not exist and worktree $WT is detached" >&2; exit 1; }
   git -C "$WT" rev-parse --verify --quiet "refs/heads/$BRANCH" >/dev/null || { echo "error: branch $BRANCH does not exist in $WT" >&2; exit 1; }
 fi
 

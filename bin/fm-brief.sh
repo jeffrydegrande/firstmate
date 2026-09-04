@@ -12,9 +12,14 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--branch <name>] [--herdr-lab]
 #        fm-brief.sh <task-id> <repo-name> --scout [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
+#   --branch <name> sets the branch the worker creates. Firstmate resolves the
+#   name at intake (AGENTS.md section 7); the same name goes into the Setup step,
+#   RULE1, and the Definition of done. An empty or whitespace-only value is
+#   refused. Without --branch, the deprecated fm/<task-id> default is used and a
+#   one-line stderr warning is printed. --branch applies only to ship briefs.
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
 #   --secondmate writes a persistent secondmate charter. The project list
@@ -118,6 +123,8 @@ HERDR_LAB=0
 NO_PROJECTS=0
 MODE=
 MODE_SET=0
+BRANCH_ARG=
+BRANCH_SET=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -127,6 +134,7 @@ for a in "$@"; do
     esac
     case "$want_value" in
       mode) MODE=$a; MODE_SET=1 ;;
+      branch) BRANCH_ARG=$a; BRANCH_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
     want_value=
@@ -139,6 +147,8 @@ for a in "$@"; do
     --no-projects) NO_PROJECTS=1 ;;
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
+    --branch) want_value=branch ;;
+    --branch=*) BRANCH_ARG=${a#--branch=}; BRANCH_SET=1 ;;
     # yolo never reaches the worker: it is firstmate's merge authority, not a
     # brief input. Refuse it loudly so it is never silently dropped here and then
     # believed to have been recorded.
@@ -164,6 +174,10 @@ if [ "$KIND" = ship ]; then
   esac
 elif [ "$MODE_SET" -eq 1 ]; then
   echo "error: --mode applies only to ship briefs; a scout delivers a report and a secondmate charter is not a delivery contract" >&2
+  exit 1
+fi
+if [ "$KIND" != ship ] && [ "$BRANCH_SET" -eq 1 ]; then
+  echo "error: --branch applies only to ship briefs; a scout works detached and a secondmate charter creates no branch" >&2
   exit 1
 fi
 ID=${POS[0]}
@@ -404,6 +418,21 @@ echo "scaffolded: $BRIEF (scout; replace {TASK} and {FIRSTMATE_SPEC})"
 exit 0
 fi
 
+# Branch the worker creates. Firstmate sets it at intake (AGENTS.md section 7).
+# The same name reaches the Setup step, RULE1, and the Definition of done, and
+# bin/fm-spawn.sh reads it back from the Setup step to record branch= in meta.
+# Without --branch, the deprecated fm/<id> default is used with a loud warning.
+if [ "$BRANCH_SET" -eq 1 ]; then
+  case "$BRANCH_ARG" in
+    *[![:space:]]*) : ;;
+    *) echo "error: --branch requires a non-empty, non-whitespace value" >&2; exit 1 ;;
+  esac
+  BRANCH=$BRANCH_ARG
+else
+  BRANCH="fm/$ID"
+  echo "warning: no --branch given; using the deprecated fm/$ID default. Pass --branch <name> so firstmate sets the branch at intake." >&2
+fi
+
 # Ship task: shape Setup / Rule 1 by this task's explicit delivery mode, validated
 # above, and render the Definition of done from its single owner, bin/fm-dod-lib.sh,
 # which bin/fm-promote.sh renders too so a promoted scout receives the same contract.
@@ -412,11 +441,11 @@ fi
 case "$MODE" in
   direct-PR)
     SETUP2=""
-    RULE1='1. Never push to the default branch (push only your `fm/'"$ID"'` branch). Never merge a PR.'
+    RULE1='1. Never push to the default branch (push only your `'"$BRANCH"'` branch). Never merge a PR.'
     ;;
   local-only)
     SETUP2=""
-    RULE1="1. Never push to any remote and never open a PR. Work only on your \`fm/$ID\` branch; firstmate handles the merge into local \`main\`."
+    RULE1="1. Never push to any remote and never open a PR. Work only on your \`$BRANCH\` branch; firstmate handles the merge into local \`main\`."
     ;;
   *)  # no-mistakes
     SETUP2="
@@ -424,7 +453,7 @@ case "$MODE" in
     RULE1='1. Never push to the default branch. Never merge a PR.'
     ;;
 esac
-DOD=$(fm_dod_block "$MODE" "$ID") || exit 1
+DOD=$(fm_dod_block "$MODE" "$ID" "$BRANCH") || exit 1
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
@@ -440,7 +469,7 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
-1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
+1. First action: create your branch: \`git checkout -b $BRANCH\`$SETUP2
 
 # Rules
 $RULE1

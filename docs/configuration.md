@@ -107,6 +107,13 @@ A `manual` home owns its backlog file outright: the lifecycle transitions above 
 Absent or `tasks-axi` selects the default tasks-axi backend.
 The file format is unchanged in both modes; tasks-axi and manual edits produce the same `## In flight`, `## Queued`, and `## Done` sections.
 
+## Task branch name
+
+Firstmate sets each ship task's branch name at intake and passes it with `--branch <name>` to [`bin/fm-brief.sh`](../bin/fm-brief.sh) and [`bin/fm-spawn.sh`](../bin/fm-spawn.sh).
+The brief uses that name in its Setup step, RULE1, and Definition of done, and the spawn records it as `branch=` in `state/<id>.meta`.
+The landing ([`bin/fm-merge-local.sh`](../bin/fm-merge-local.sh)), review ([`bin/fm-review-diff.sh`](../bin/fm-review-diff.sh)), and bearings ([`bin/fm-bearings-snapshot.sh`](../bin/fm-bearings-snapshot.sh)) helpers resolve the branch from that `branch=` value.
+Without `--branch`, the tooling falls back to the legacy `fm/<task-id>` name and warns; a task whose meta has no `branch=` keeps working on that legacy name.
+
 ## Runtime backend (config/backend / FM_BACKEND)
 
 For spawn-capable adapters, the runtime session-provider backend controls where task windows/endpoints are created, captured, sent to, watched, and killed.
