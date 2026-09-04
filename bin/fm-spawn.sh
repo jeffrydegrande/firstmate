@@ -178,6 +178,9 @@
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
 #     __WORKTREE__  absolute path to the task worktree
 #     __CURSORBIN__ resolved, cursor-verified executable for a cursor launch
+#     __CLAUDESETTINGS__ shell-quoted claude --settings JSON; a crewmate or scout
+#                  also gets the dark-daltonized theme and the CREWMATE status-line
+#                  banner (bin/fm-crewmate-statusline.sh), a secondmate does not
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -1269,13 +1272,18 @@ launch_template() {
     # feedback flow (the SendFeedback tool), deliberately layered so a fleet-launched
     # agent never queues or submits a bug-report draft on the captain's behalf even
     # under a managed Claude settings policy: CLAUDE_CODE_SEND_FEEDBACK=0 is read
-    # directly and is not subject to managed-settings precedence, while --settings
-    # '{"feedbackDrafts":"off"}' sets the documented settings key (Claude Code
-    # changelog 2.1.247) that a managed policy CAN override back on. Either control
-    # alone disables the feature; keep both so a managed override of one still
-    # leaves the other in force. Both are per-launch, scoped to this invocation only,
-    # and never touch the captain's global ~/.claude/settings.json.
-    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings '\''{"feedbackDrafts":"off"}'\'' __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+    # directly and is not subject to managed-settings precedence, while the
+    # "feedbackDrafts":"off" key (Claude Code changelog 2.1.247) that a managed
+    # policy CAN override back on rides the --settings JSON. Either control alone
+    # disables the feature; keep both so a managed override of one still leaves the
+    # other in force. Both are per-launch, scoped to this invocation only, and never
+    # touch the captain's global ~/.claude/settings.json.
+    # The --settings JSON value is the __CLAUDESETTINGS__ placeholder, resolved at
+    # substitution time so a crewmate or scout launch also carries the "dark-daltonized"
+    # theme and the CREWMATE status-line banner, while a secondmate (a firstmate in
+    # its own home, primary there) keeps only "feedbackDrafts":"off". This is what
+    # makes a worker window unmistakable from the captain's own firstmate session.
+    claude) printf '%s' 'CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions --settings __CLAUDESETTINGS__ __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     codex)
       if [ "$kind" = secondmate ]; then
         printf '%s' 'codex __MODELFLAG____EFFORTFLAG__--dangerously-bypass-approvals-and-sandbox "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
@@ -3071,6 +3079,24 @@ LAUNCH=${LAUNCH//__PIEXT__/$sq_piext}
 LAUNCH=${LAUNCH//__PITURNEND__/$sq_piturnend}
 LAUNCH=${LAUNCH//__PIWATCH__/$sq_piwatch}
 LAUNCH=${LAUNCH//__OPINPUT__/$sq_opinput}
+# Claude's --settings JSON. A crewmate or scout also gets the "dark-daltonized"
+# theme (still dark, a different accent palette) and the loud CREWMATE status-line
+# banner, so its window can never be mistaken for the captain's own firstmate
+# session. A secondmate is a firstmate in its own home and stays on the captain's
+# own theme with no banner, so it keeps only "feedbackDrafts":"off". The banner
+# helper takes the task id as its single argument; both tokens are shell-quoted
+# inside the JSON command string, then the whole JSON is shell-quoted for the
+# launch line.
+if [ "$HARNESS" = claude ]; then
+  if [ "$KIND" = secondmate ]; then
+    claude_settings='{"feedbackDrafts":"off"}'
+  else
+    statusline_cmd="$(shell_quote "$FM_ROOT/bin/fm-crewmate-statusline.sh") $(shell_quote "$ID")"
+    j_statusline=$(json_escape "$statusline_cmd")
+    claude_settings='{"feedbackDrafts":"off","theme":"dark-daltonized","statusLine":{"type":"command","command":"'"$j_statusline"'"}}'
+  fi
+  LAUNCH=${LAUNCH//__CLAUDESETTINGS__/"$(shell_quote "$claude_settings")"}
+fi
 case "$HARNESS" in
   pi|pi-signed) LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"} ;;
   cursor) LAUNCH=${LAUNCH//__CURSORBIN__/"$(shell_quote "$CURSOR_BIN")"} ;;

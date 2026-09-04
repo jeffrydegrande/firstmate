@@ -295,7 +295,7 @@ family_for_basename() {
     fm-control.test.sh|fm-control-relaunch.test.sh|\
     fm-herdr-session-cleanup.test.sh|fm-send-resolve-key.test.sh|fm-send-strict.test.sh|\
     fm-send-inbox.test.sh|fm-spawn-batch.test.sh|\
-    fm-spawn-dispatch-profile.test.sh|fm-claude-trust.test.sh|\
+    fm-crewmate-statusline.test.sh|fm-spawn-dispatch-profile.test.sh|fm-claude-trust.test.sh|\
     fm-trace-context-spawn.test.sh|fm-spawn-worktree-settle.test.sh|\
     fm-teardown-endpoint-safety.test.sh)
       printf '%s\n' backend-dispatch
@@ -572,6 +572,7 @@ tests/fm-codex-continuity-live-e2e.test.sh 21
 tests/fm-composer-matrix-live-e2e.test.sh 23
 tests/fm-control-relaunch.test.sh 48210
 tests/fm-control.test.sh 37798
+tests/fm-crewmate-statusline.test.sh 7178
 tests/fm-cursor-harness.test.sh 30103
 tests/fm-cursor-primary-live-e2e.test.sh 21
 tests/fm-cursor-primary.test.sh 54947
@@ -823,6 +824,13 @@ select_lane() {
 run_coverage_guard() {
   local tmp missing extra a b shard unhinted serial_total
   local -a saved_scripts=()
+  # Pin the whole guard to the C locale so every child process agrees on order.
+  # The lists below are sorted with `LC_ALL=C sort`, but `comm` (GNU coreutils 9)
+  # checks order in its OWN locale and aborts under set -e when that locale is not
+  # C (for example an interactive en_US.UTF-8 shell), where `-` and `.` collate
+  # differently from C. Exporting C here keeps sort and comm consistent on every
+  # locale, not only the C-like locale CI runs in.
+  local -x LC_ALL=C
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-coverage.XXXXXX")
 
   all_repo_tests | LC_ALL=C sort -u >"$tmp/all"
