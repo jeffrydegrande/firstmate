@@ -799,7 +799,7 @@ test_active_dispatch_profile_does_not_block_secondmate_launch() {
 # fake backend records delivery, while real shells exercise the env boundary.
 # No developer environment or credential values are inspected by these probes.
 test_launch_environment_allowlist() {
-  local setting rec id out status probe result expected launch value pane_shell
+  local setting rec id out status probe result expected operational launch value pane_shell
   # shellcheck disable=SC2016
   value='synthetic value; $(touch SHOULD_NOT_EXIST) `false` "quoted"'
   for setting in absent missing-config enabled empty; do
@@ -834,7 +834,11 @@ SH
         enabled) expected=$(printf '%s\n' unset "$value" '' unset) ;;
         empty) expected=$(printf '%s\n' unset unset unset unset) ;;
       esac
-      expected="$expected"$'\n'"$HOME_DIR/user-home"$'\n/usr/bin:/bin\nxterm\nsynthetic-pane\n/synthetic/gotmp'
+      operational=$(env -i HOME="$HOME_DIR/user-home" PATH=/usr/bin:/bin TERM=xterm \
+        TMUX=synthetic-pane GOTMPDIR=/synthetic/gotmp \
+        "$pane_shell" -c 'printf '\''%s\n'\'' "$HOME" "$PATH" "$TERM" "$TMUX" "$GOTMPDIR"') \
+        || fail "allowlist=$setting pane environment probe failed in $pane_shell"
+      expected="$expected"$'\n'"$operational"
       [ "$result" = "$expected" ] || fail "allowlist=$setting worker environment mismatch: $result"
     done
     pass "allowlist=$setting preserves the operational floor and filters only when opted in"
