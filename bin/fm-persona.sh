@@ -8,12 +8,12 @@
 # Usage: fm-persona.sh [name]
 #
 # Name source, in order: the [name] argument, else the first non-empty,
-# non-comment line of config/persona, else "plain" (the shipped default).
+# non-comment line of config/persona, else "vader" (the shipped default).
 # File resolution, in order: data/personas/<name>.md (the captain's own,
 # gitignored), then docs/examples/personas/<name>.md (the shipped examples).
 #
 # Fail-safe for session start: an unknown, unsafe, or unreadable persona name
-# falls back to "plain", then to a built-in one-line default. This never errors
+# falls back to "vader", then to a built-in one-line default. This never errors
 # and always exits 0, so a missing persona means the default voice, never a
 # broken digest.
 set -u
@@ -24,7 +24,7 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 
-DEFAULT_PERSONA=plain
+DEFAULT_PERSONA=vader
 
 # Print the first non-empty, non-comment line of config/persona (whitespace
 # trimmed), or nothing when the file is absent or holds only blank/comment lines.

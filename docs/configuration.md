@@ -226,11 +226,11 @@ A persona is a voice-only overlay for firstmate's user-facing tone.
 It changes how firstmate addresses the user and its tone; it never changes safety, outcome accuracy, escalation behavior, or the requirement to write concise, plain, Simplified Technical English.
 The local, gitignored `config/persona` file selects the active persona.
 The first non-empty, non-comment line names it; a leading `#` marks a comment line.
-An absent or empty file means the default persona, `plain`.
+An absent or empty file means the default persona, `vader`.
 The persona name resolves to a file by that name, in this order: the captain's own `data/personas/<name>.md` first, then the shipped `docs/examples/personas/<name>.md`.
-An unknown, unsafe, or unreadable name falls back to `plain`, so a missing persona means the default voice.
+An unknown, unsafe, or unreadable name falls back to `vader`, so a missing persona means the default voice.
 `bin/fm-session-start.sh` prints the resolved persona in the session-start context digest, so firstmate adopts the voice every session.
-The shipped examples are `plain` (the default professional voice) and `vader`.
+The shipped examples are `vader` (the default voice) and `plain` (a plain professional voice).
 
 ## Operational learnings (data/learnings.md)
 

@@ -41,27 +41,27 @@ test_resolution() {
   local world root home
   world=$(new_world resolution); root=${world%|*}; home=${world#*|}
 
-  # Absent config/persona yields the default (plain).
+  # Absent config/persona yields the default (vader).
   local out
   out=$(resolve "$root" "$home")
-  assert_contains "$out" "SHIPPED_PLAIN_MARKER" "absent config/persona did not yield the default plain persona"
+  assert_contains "$out" "SHIPPED_VADER_MARKER" "absent config/persona did not yield the default vader persona"
 
-  # A named persona resolves the shipped example.
-  printf 'vader\n' > "$home/config/persona"
+  # A named persona resolves the shipped example, distinct from the default.
+  printf 'plain\n' > "$home/config/persona"
   out=$(resolve "$root" "$home")
-  assert_contains "$out" "SHIPPED_VADER_MARKER" "named persona did not resolve the shipped example"
+  assert_contains "$out" "SHIPPED_PLAIN_MARKER" "named persona did not resolve the shipped example"
 
   # data/personas/<name>.md wins over the shipped example for the same name.
-  printf 'LOCAL_VADER_MARKER\n' > "$home/data/personas/vader.md"
+  printf 'LOCAL_PLAIN_MARKER\n' > "$home/data/personas/plain.md"
   out=$(resolve "$root" "$home")
-  assert_contains "$out" "LOCAL_VADER_MARKER" "data/ persona did not override the shipped example"
-  assert_not_contains "$out" "SHIPPED_VADER_MARKER" "shipped example leaked when data/ persona exists"
+  assert_contains "$out" "LOCAL_PLAIN_MARKER" "data/ persona did not override the shipped example"
+  assert_not_contains "$out" "SHIPPED_PLAIN_MARKER" "shipped example leaked when data/ persona exists"
 
   # Comment and blank lines are skipped; an unknown name falls back to default.
   printf '# comment\n\n   no-such-persona  \n' > "$home/config/persona"
-  rm -f "$home/data/personas/vader.md"
+  rm -f "$home/data/personas/plain.md"
   out=$(resolve "$root" "$home")
-  assert_contains "$out" "SHIPPED_PLAIN_MARKER" "unknown persona name did not fall back to the default"
+  assert_contains "$out" "SHIPPED_VADER_MARKER" "unknown persona name did not fall back to the default"
 
   pass "persona resolution: data over docs/examples, default on absent/unknown"
 }
@@ -70,14 +70,14 @@ test_digest_includes_active_persona() {
   local world root home out
   world=$(new_world digest); root=${world%|*}; home=${world#*|}
 
-  # With no config, the digest carries the default persona.
+  # With no config, the digest carries the default persona (vader).
   out=$(digest "$root" "$home")
-  assert_contains "$out" "SHIPPED_PLAIN_MARKER" "session-start digest did not include the default persona"
+  assert_contains "$out" "SHIPPED_VADER_MARKER" "session-start digest did not include the default persona"
 
   # A selected persona reaches the digest through the resolver.
-  printf 'vader\n' > "$home/config/persona"
+  printf 'plain\n' > "$home/config/persona"
   out=$(digest "$root" "$home")
-  assert_contains "$out" "SHIPPED_VADER_MARKER" "session-start digest did not include the selected persona"
+  assert_contains "$out" "SHIPPED_PLAIN_MARKER" "session-start digest did not include the selected persona"
 
   pass "session-start digest includes the active persona"
 }
