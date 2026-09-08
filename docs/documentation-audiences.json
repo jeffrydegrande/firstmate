@@ -325,6 +325,14 @@
       "audience": "operator-example"
     },
     {
+      "path": "docs/examples/personas/plain.md",
+      "audience": "operator-example"
+    },
+    {
+      "path": "docs/examples/personas/vader.md",
+      "audience": "operator-example"
+    },
+    {
       "path": "docs/examples/process-event-extension/file-signal.mjs",
       "audience": "operator-example"
     },

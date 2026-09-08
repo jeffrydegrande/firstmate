@@ -909,6 +909,13 @@ print_file_or_absent "$DATA/captain.md" "data/captain.md"
 print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
 print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
 
+# Active persona: a voice-only overlay for firstmate's user-facing tone. The
+# resolver is fail-safe (a missing or unreadable persona yields the default
+# voice, never a broken digest), so this never guards the whole digest.
+subsection "active persona (voice overlay; governs address and tone only, never safety, accuracy, escalation, or the concise plain-language rules)"
+FM_HOME="$FM_HOME" FM_ROOT_OVERRIDE="$FM_ROOT" FM_CONFIG_OVERRIDE="$CONFIG" FM_DATA_OVERRIDE="$DATA" \
+  "$SCRIPT_DIR/fm-persona.sh" 2>/dev/null || true
+
 # --- 9. closing reminder -----------------------------------------------
 stage next-step
 section "NEXT STEP"
