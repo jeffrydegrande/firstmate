@@ -35,6 +35,18 @@ FM_TEST_LIB_SOURCED=1
 # strips this to verify real refusal.
 export FM_GATE_REFUSE_BYPASS=1
 
+# Stub the ghostty terminal by default so no test opens a real GUI window.
+# The tmux backend's new-session path launches a ghostty terminal
+# (fm_backend_tmux_ghostty_new_session, resolved through FM_GHOSTTY), so any test
+# that drives the real fm-spawn on the tmux backend without a stub opens a window
+# on a host that has ghostty. `true` is a present binary that exits at once, so
+# the ghostty child dies before the session appears and the backend falls back to
+# a detached `tmux new-session -d` with no window - the same headless path CI
+# takes where ghostty is absent. A test that genuinely exercises the ghostty path
+# (tests/fm-backend-tmux-smoke.test.sh) sets FM_GHOSTTY inline per call, which
+# overrides this default; an outer explicit FM_GHOSTTY is likewise respected.
+export FM_GHOSTTY="${FM_GHOSTTY:-true}"
+
 # Resolve the repo root from this library's own location. Consumed by sourcing
 # test files, not by this library, so it reads as "unused" here.
 # shellcheck disable=SC2034
